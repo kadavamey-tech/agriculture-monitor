@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agriculture Monitoring System</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+      footer {
+      text-align: center;
+      padding: 15px;
+      margin-top: 30px;
+      font-size: 0.9em;
+      color: var(--text);
+      background: var(--card-bg);
+      border-top: 1px solid rgba(0,0,0,0.1);
+    }
+    body.dark footer {
+      background: #1e1e1e;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+
+    :root {
+      --primary: #2e7d32;
+      --secondary: #4caf50;
+      --bg: #f7faf7;
+      --card-bg: #fff;
+      --text: #333;
+    }
+    body.dark {
+      --primary: #81c784;
+      --secondary: #388e3c;
+      --bg: #121212;
+      --card-bg: #1e1e1e;
+      --text: #f1f1f1;
+    }
+
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    header { background: linear-gradient(135deg, var(--secondary), var(--primary)); color: white; padding: 15px; text-align: center; font-size: 1.5em; }
+    nav { display: flex; justify-content: center; background: var(--card-bg); box-shadow: 0 2px 6px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 1000; }
+    nav button { border: none; padding: 14px 24px; margin: 5px; font-weight: 600; border-radius: 8px; cursor: pointer; background: transparent; color: var(--text); transition: all 0.2s; }
+    nav button.active { background: var(--primary); color: white; }
+    .page { display: none; padding: 20px; }
+    .page.active { display: block; }
+
+    .card { background: var(--card-bg); border-radius: 14px; padding: 18px 22px; margin: 12px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 8px 18px rgba(0,0,0,0.12); }
+
+    .label { font-weight: 600; }
+    .value { font-size: 1.2em; font-weight: bold; color: var(--primary); }
+    .level { margin-bottom: 30px; }
+
+    .gauge-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .gauge-grid canvas { max-width: 150px; max-height: 150px; margin: auto; }
+
+    .switch-grid { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+    .switch-card { flex: 1; min-width: 200px; max-width: 250px; }
+
+    .indicator-compartments { display: flex; flex-wrap: wrap; gap: 20px; }
+    .compartment { flex: 1; min-width: 250px; background: var(--card-bg); border-radius: 12px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .compartment h3 { margin: 0 0 10px; font-size: 1.1em; color: var(--primary); }
+
+    .led { width: 16px; height: 16px; border-radius: 50%; display: inline-block; margin-left: 8px; }
+    .led.on { background: #27ae60; }
+    .led.off { background: #e74c3c; }
+
+    .switch { position: relative; display: inline-block; width: 70px; height: 34px; }
+    .switch input { display: none; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 34px; transition: 0.4s; }
+    .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; border-radius: 50%; transition: 0.4s; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(36px); }
+
+    .history li { padding: 6px 0; border-left: 3px solid var(--primary); margin-left: 15px; padding-left: 10px; font-size: 0.9em; color: #555; }
+
+    canvas { max-width: 100%; }
+    .farm-photo { width: 100%; margin-top: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+    /* Plant Mood Image */
+    .mood-img { width: 80%; max-width: 350px; display: block; margin: 20px auto; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+    /* Responsive */
+    @media (max-width: 768px) { .gauge-grid { grid-template-columns: repeat(2, 1fr); } }
+    .gauge-grid canvas:last-child {
+      grid-column: 1 / -1; /* span both columns */
+      justify-self: center;
+    }
+
+    /* Dark mode toggle button updated styling */
+    .dark-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      font-size: 1.1em;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+    .dark-toggle:hover {
+      background-color: var(--secondary);
+      transform: scale(1.05);
+    }
+    .dark-toggle:active {
+      transform: scale(0.95);
+    }
+    .dark-toggle .icon {
+      font-size: 1.3em;
+      line-height: 1;
+    }
+    
+    
+    #dataChart {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 350px !important; /* bigger height for visibility */
+}
+
+@media (max-width: 600px) {
+  #dataChart {
+    height: 250px !important; /* smaller but still clear on phones */
+  }
+}
+
+  </style>
+</head>
+<body>
+  <header>🌱 Agriculture Monitoring System</header>
+
+  <nav>
+    <button id="btnPage1" class="active">Dashboard</button>
+    <button id="btnPage2">Analytics</button>
+    <button id="btnPage3">Plant Mood</button>
+  </nav>
+
+  <!-- PAGE 1 -->
+  <div id="page1" class="page active">
+    <h2 style="text-align:center; margin-bottom:20px;">Dashboard</h2>
+    <div class="level gauge-grid">
+      <canvas id="gaugeTemp"></canvas>
+      <canvas id="gaugeHum"></canvas>
+      <canvas id="gaugeSoil"></canvas>
+      <canvas id="gaugeRain"></canvas>
+      <canvas id="gaugeLight"></canvas>
+    </div> 
+    <div class="level switch-grid">
+      <div class="card switch-card"><div class="label">🚰 Water Pump</div><label class="switch"><input type="checkbox" id="pumpToggle"><span class="slider"></span></label></div>
+      <div class="card switch-card"><div class="label">👀 Motion Sensor</div><label class="switch"><input type="checkbox" id="motionToggle"><span class="slider"></span></label></div>
+    </div>
+    <div class="level indicator-compartments">
+      <div class="compartment"><h3>☔ Rain Detection</h3><div>Status: <span id="rainLed" class="led off"></span></div><h4>Past Rain History</h4><ul id="rainHistory" class="history"></ul></div>
+      <div class="compartment"><h3>👀 Motion Detection</h3><div>Status: <span id="motionLed" class="led off"></span></div><h4>Past Motion History</h4><ul id="motionHistory" class="history"></ul></div>
+    </div>
+  </div>
+
+  <!-- PAGE 2 -->
+  <div id="page2" class="page">
+    <h3>📊 Sensor Data Graph</h3>
+    <canvas id="dataChart"></canvas>
+    <div class="card"><div class="label">Predicted Plant Health</div><div class="value" id="health">--</div></div>
+    <div class="card"><div class="label">Predicted Yield</div><div class="value" id="yield">--</div></div>
+      <div class="card"><div class="label">Action Suggested</div><div class="value" id="actionSuggested">--</div></div>
+
+    <img class="farm-photo" src="https://uploads.onecompiler.io/43wmvvz2e/43x4chu5b/Screenshot%202025-09-18%20215201.png" alt="Farm Photo">
+  </div>
+
+  <!-- PAGE 3 (Plant Mood) -->
+  <div id="page3" class="page">
+    <h2 style="text-align:center;">🌿 Plant Mood</h2>
+    <img id="moodImage" class="mood-img" src="default.png" alt="Plant Mood">
+    <p style="text-align:center; font-size:1.3em; font-weight:bold;" id="moodText">Waiting for sensor data...</p>
+    <p style="text-align:center; font-size:1em; max-width:500px; margin:10px auto; color:gray;" id="moodDetails">
+      Sensor data will appear here soon.
+    </p>
+  </div>
+
+  <button class="dark-toggle" id="darkBtn"><span class="icon">🌙</span> Dark</button>
+
+  <script>
+    // Page switching
+    const btnPage1 = document.getElementById("btnPage1");
+    const btnPage2 = document.getElementById("btnPage2");
+    const btnPage3 = document.getElementById("btnPage3");
+    const page1 = document.getElementById("page1");
+    const page2 = document.getElementById("page2");
+    const page3 = document.getElementById("page3");
+    function showPage(pg, btn){ 
+      [page1,page2,page3].forEach(p=>p.classList.remove("active")); [btnPage1,btnPage2,btnPage3].forEach(b=>b.classList.remove("active")); pg.classList.add("active"); btn.classList.add("active"); }
+    btnPage1.onclick = ()=>showPage(page1,btnPage1);
+    btnPage2.onclick = ()=>showPage(page2,btnPage2);
+    btnPage3.onclick = ()=>showPage(page3,btnPage3);
+
+        // Dark mode
+    const darkBtn = document.getElementById("darkBtn");
+    darkBtn.onclick = () => { document.body.classList.toggle("dark"); darkBtn.textContent = document.body.classList.contains("dark") ? "☀️ Light" : "🌙 Dark"; }
+
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBZXxJtKaoPIYu55gKkqRji-eNMhle9Pk0",
+      authDomain: "agricore-1cc30.firebaseapp.com",
+      databaseURL: "https://agricore-1cc30-default-rtdb.firebaseio.com",
+      projectId: "agricore-1cc30",
+      storageBucket: "agricore-1cc30.firebasestorage.app",
+      messagingSenderId: "801830091735",
+      appId: "1:801830091735:web:220c3e43cb2f73fefae992",
+      measurementId: "G-4ZF1BEHMNG"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // DOM elements
+    const pumpToggle = document.getElementById('pumpToggle');
+    const motionToggle = document.getElementById('motionToggle');
+    const rainLed = document.getElementById("rainLed");
+    const motionLed = document.getElementById("motionLed");
+    const healthEl = document.getElementById('health');
+    const yieldEl = document.getElementById('yield');
+    const rainHistory = document.getElementById('rainHistory');
+    const motionHistory = document.getElementById('motionHistory');
+    const moodImage = document.getElementById("moodImage");
+    const moodText = document.getElementById("moodText");
+
+    // Request notification permission
+    if ("Notification" in window) {
+      Notification.requestPermission();
+    }
+
+    // Gauges
+    function createGauge(ctx, label, color) {
+      return new Chart(ctx, { type: 'doughnut',
+        data: { datasets: [{ data: [0, 100], backgroundColor: [color, '#eee'], cutout: '75%' }], labels: [label] },
+        options: { plugins: { legend: { display: true, position: 'bottom' }, tooltip: { enabled: false } } }
+      });
+    }
+    const gaugeTemp = createGauge(document.getElementById('gaugeTemp'), 'Temp', '#e67e22');
+    const gaugeHum = createGauge(document.getElementById('gaugeHum'), 'Humidity', '#2980b9');
+    const gaugeSoil = createGauge(document.getElementById('gaugeSoil'), 'Soil', '#2e7d32');
+    const gaugeRain = createGauge(document.getElementById('gaugeRain'), 'Rain', '#8e44ad');
+    const gaugeLight = createGauge(document.getElementById('gaugeLight'), 'Light', '#f1c40f');
+
+    function updateGauge(chart, value) { chart.data.datasets[0].data[0] = value; chart.data.datasets[0].data[1] = 100 - value; chart.update(); }
+    function setLed(el, state) { el.className = state ? "led on" : "led off"; }
+    function addHistory(listEl, text) { const li = document.createElement('li'); li.textContent = new Date().toLocaleTimeString() + " - " + text; listEl.prepend(li); if (listEl.children.length > 5) listEl.removeChild(listEl.lastChild); }
+
+    // Graph (Page 2)
+    const ctx = document.getElementById("dataChart").getContext("2d");
+    const dataChart = new Chart(ctx, {
+      type: "line",
+      data: { labels: [], datasets: [
+        { label: "Soil", borderColor: "#2e7d32", backgroundColor: "rgba(46,125,50,0.2)", data: [], fill: true, tension: 0.4 },
+        { label: "Temp", borderColor: "#e67e22", backgroundColor: "rgba(230,126,34,0.2)", data: [], fill: true, tension: 0.4 },
+        { label: "Humidity", borderColor: "#2980b9", backgroundColor: "rgba(41,128,185,0.2)", data: [], fill: true, tension: 0.4 },
+        { label: "Rain", borderColor: "#8e44ad", backgroundColor: "rgba(142,68,173,0.2)", data: [], fill: true, tension: 0.4 },
+        { label: "Light", borderColor: "#f1c40f", backgroundColor: "rgba(241,196,15,0.2)", data: [], fill: true, tension: 0.4 }
+      ]},
+      options: { responsive: true }
+    });
+
+    // Mood update function
+    function updateMood(data) {
+      let img = "https://uploads.onecompiler.io/43wmvvz2e/43wmqa6x6/WhatsApp%20Image%202025-09-12%20at%2012.16.23%20PM.jpeg", text = "Plant is stable 🌱";
+
+      if (data.soilMoisture < 30) { img = "https://uploads.onecompiler.io/43wmvvz2e/43x4chu5b/ChatGPT%20Image%20Sep%2014,%202025,%2003_03_44%20AM.png"; text = "Soil is Dry 😟"; }
+      else if (data.soilMoisture > 80) { img = "https://uploads.onecompiler.io/43wmvvz2e/43x4chu5b/ChatGPT%20Image%20Sep%2014,%202025,%2003_14_02%20AM.png"; text = "Too Much Water 💧"; }
+      else if (data.rain > 50) { img = "https://uploads.onecompiler.io/43wmvvz2e/43wmqa6x6/WhatsApp%20Image%202025-09-12%20at%2012.03.11%20PM.jpeg"; text = "It's Raining ☔"; }
+      else if (data.motion === 1) { img = "https://uploads.onecompiler.io/43wmvvz2e/43x4chu5b/WhatsApp%20Image%202025-09-12%20at%2012.11.35%20PM.jpeg"; text = "Motion Detected 👀"; }
+      else if (data.light < 20) { img = "https://uploads.onecompiler.io/43wmvvz2e/43x4chu5b/ChatGPT%20Image%20Sep%2014,%202025,%2003_06_36%20AM.png"; text = "Low Light 🌑"; }
+      else if (data.light > 80) { img = "https://uploads.onecompiler.io/43wmvvz2e/43x4chu5b/ChatGPT%20Image%20Sep%2014,%202025,%2003_20_18%20AM.png"; text = "Too Much Light ☀️"; }
+
+      moodImage.src = img;
+      moodText.textContent = text;
+    }
+
+    // Firebase listeners
+    let lastRainState = false;
+    let lastMotionState = false;
+
+    const sensorRef = db.ref('/sensor');
+    sensorRef.on('value', snap => {
+      const data = snap.val();
+      if (!data) return;
+
+      // Gauges
+      updateGauge(gaugeTemp, data.temperature || 0);
+      updateGauge(gaugeHum, data.humidity || 0);
+      updateGauge(gaugeSoil, data.soilMoisture || 0);
+      updateGauge(gaugeRain, data.rain || 0);
+      updateGauge(gaugeLight, data.light || 0);
+
+      // LEDs + history
+      const rainActive = data.rain > 50;
+      setLed(rainLed, rainActive);
+      if (rainActive) addHistory(rainHistory, "Rain detected");
+      
+      // Notification for rain
+      if (rainActive && !lastRainState) {
+        if (Notification.permission === "granted") {
+          new Notification("🌧️ Rain Detected!", { body: "Rain has started in your farm." });
+        }
+      }
+      lastRainState = rainActive;
+
+      const motionActive = data.motion === 1;
+      setLed(motionLed, motionActive);
+      if (motionActive) addHistory(motionHistory, "Motion detected");
+
+      // Notification for motion
+      if (motionActive && !lastMotionState) {
+        if (Notification.permission === "granted") {
+          new Notification("👀 Motion Detected!", { body: "Motion detected in your farm." });
+        }
+      }
+      lastMotionState = motionActive;
+
+      // Graph
+      const now = new Date().toLocaleTimeString();
+      dataChart.data.labels.push(now);
+      dataChart.data.datasets[0].data.push(data.soilMoisture || 0);
+      dataChart.data.datasets[1].data.push(data.temperature || 0);
+      dataChart.data.datasets[2].data.push(data.humidity || 0);
+      dataChart.data.datasets[3].data.push(data.rain || 0);
+      dataChart.data.datasets[4].data.push(data.light || 0);
+      if (dataChart.data.labels.length > 10) { dataChart.data.labels.shift(); dataChart.data.datasets.forEach(ds => ds.data.shift()); }
+      dataChart.update();
+
+      // Predictions  
+      function scoreRange(value, min, max) {
+        if (value < min) return (value / min) * 50;
+        if (value > max) return (max / value) * 50;
+        return 100;
+      }
+      const soilScore  = scoreRange(data.soilMoisture, 40, 70);
+      const humScore   = scoreRange(data.humidity, 75, 85);
+      const tempScore  = scoreRange(data.temperature, 20, 30);
+      const lightScore = scoreRange(data.light, 10, 20);
+      const rainScore  = (data.rain < 50) ? 100 : 50;
+
+      const healthIndex = (
+        soilScore * 0.3 +
+        humScore * 0.2 +
+        tempScore * 0.2 +
+        lightScore * 0.2 +
+        rainScore * 0.1
+      ).toFixed(0);
+      healthEl.textContent = healthIndex + " %";
+
+      const yieldPrediction = (healthIndex * 500 * 0.01).toFixed(1) + " g/m²";
+      yieldEl.textContent = yieldPrediction;
+
+      let action = "No action needed";
+      if (data.soilMoisture < 30) action = "Water the plants soon 💧";
+      else if (data.soilMoisture > 80) action = "Reduce watering to avoid overwatering 🚱";
+      else if (data.light < 20) action = "Increase light exposure 🌞";
+      else if (data.light > 80) action = "Provide some shade to plants 🌤️";
+      else if (data.rain > 50) action = "Rain detected, check drainage ☔";
+      document.getElementById('actionSuggested').textContent = action;
+
+      updateMood(data);
+    });
+
+    // Pump control
+    const pumpRef = db.ref('/pumpControl');
+    pumpRef.on('value', snap => { pumpToggle.checked = snap.val() === true; });
+    pumpToggle.addEventListener('change', () => { pumpRef.set(pumpToggle.checked); });
+
+    // Motion control
+    const motionControlRef = db.ref('/motionControl');
+    motionControlRef.on('value', snap => { motionToggle.checked = snap.val() === true; });
+    motionToggle.addEventListener('change', () => { motionControlRef.set(motionToggle.checked); });
+    
+  </script>
+    <!-- FOOTER -->
+  <footer>
+    Created by Team Agricore (Amey, Nidhi, Janhvi, Trishit)
+  </footer>
+
+</body>
+</html>
